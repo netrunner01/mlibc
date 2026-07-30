@@ -399,6 +399,53 @@ int ioctl_drm(int fd, unsigned long request, void *arg, int *result, HelHandle h
 			*result = resp.result();
 			return 0;
 		}
+		case DRM_IOCTL_MODE_OBJ_SETPROPERTY: {
+			// libdrm routes the two property setters to different ioctls:
+			// drmModeConnectorSetProperty -> DRM_IOCTL_MODE_SETPROPERTY (above) and
+			// drmModeObjectSetProperty -> here. kwin uses the object form to drive
+			// DPMS, so without this the output is never enabled, no wl_output is
+			// advertised, and every Qt client reports "There are no outputs".
+			//
+			// The wire fields are identical to the connector form; only the source
+			// struct differs. drm_mode_obj_set_property additionally carries obj_type,
+			// which is marshalled so the server can disambiguate if it ever needs to
+			// (core/drm resolves by id alone today).
+			auto param = reinterpret_cast<drm_mode_obj_set_property *>(arg);
+
+			managarm::fs::GenericIoctlRequest<SysdepsAllocator> req(getSysdepsAllocator());
+			req.set_command(request);
+			req.set_drm_property_id(param->prop_id);
+			req.set_drm_property_value(param->value);
+			req.set_drm_obj_id(param->obj_id);
+			req.set_drm_obj_type(param->obj_type);
+
+			auto [offer, send_ioctl_req, send_req, recv_resp] = exchangeMsgsSync(
+			    handle,
+			    helix_ng::offer(
+			        helix_ng::sendBragiHeadOnly(ioctl_req, getSysdepsAllocator()),
+			        helix_ng::sendBragiHeadOnly(req, getSysdepsAllocator()),
+			        helix_ng::recvInline()
+			    )
+			);
+			HEL_CHECK(offer.error());
+			HEL_CHECK(send_ioctl_req.error());
+			HEL_CHECK(send_req.error());
+			HEL_CHECK(recv_resp.error());
+
+			managarm::fs::GenericIoctlReply<SysdepsAllocator> resp(getSysdepsAllocator());
+			resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+
+			if (resp.error() != managarm::fs::Errors::SUCCESS) {
+				mlibc::infoLogger() << "\e[31mmlibc: DRM_IOCTL_MODE_OBJ_SETPROPERTY(obj "
+				                    << param->obj_id << ", prop " << param->prop_id
+				                    << ") error " << (int)resp.error() << "\e[39m" << frg::endlog;
+				*result = 0;
+				return EINVAL;
+			}
+
+			*result = resp.result();
+			return 0;
+		}
 		case DRM_IOCTL_MODE_GETPROPBLOB: {
 			auto param = reinterpret_cast<drm_mode_get_blob *>(arg);
 
