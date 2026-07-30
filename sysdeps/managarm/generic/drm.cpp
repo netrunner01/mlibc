@@ -797,7 +797,10 @@ int ioctl_drm(int fd, unsigned long request, void *arg, int *result, HelHandle h
 
 			managarm::fs::GenericIoctlReply<SysdepsAllocator> resp(getSysdepsAllocator());
 			resp.ParseFromArray(recv_resp.data(), recv_resp.length());
-			__ensure(resp.error() == managarm::fs::Errors::SUCCESS);
+			// core/drm answers ILLEGAL_ARGUMENT for an fb id that is not attached to
+			// this file; that is a userspace error, not grounds for aborting the process.
+			if (resp.error() != managarm::fs::Errors::SUCCESS)
+				return EINVAL;
 
 			*result = resp.result();
 			return 0;
@@ -1268,10 +1271,61 @@ int ioctl_drm(int fd, unsigned long request, void *arg, int *result, HelHandle h
 			return 0;
 		}
 		case DRM_IOCTL_GEM_CLOSE: {
-			mlibc::infoLogger() << "\e[35mmlibc: DRM_IOCTL_GEM_CLOSE"
-			                       " is a noop\e[39m"
-			                    << frg::endlog;
+			auto param = reinterpret_cast<drm_gem_close *>(arg);
+
+			// Unlike every other case here this does not travel as a GenericIoctlRequest:
+			// core/drm dispatches DrmIoctlGemCloseRequest as a message of its own.
+			managarm::fs::DrmIoctlGemCloseRequest<SysdepsAllocator> req(getSysdepsAllocator());
+			req.set_handle(param->handle);
+
+			auto [offer, send_ioctl_req, send_req, recv_resp] = exchangeMsgsSync(
+			    handle,
+			    helix_ng::offer(
+			        helix_ng::sendBragiHeadOnly(ioctl_req, getSysdepsAllocator()),
+			        helix_ng::sendBragiHeadOnly(req, getSysdepsAllocator()),
+			        helix_ng::recvInline()
+			    )
+			);
+			HEL_CHECK(offer.error());
+			HEL_CHECK(send_ioctl_req.error());
+			HEL_CHECK(send_req.error());
+			HEL_CHECK(recv_resp.error());
+
+			managarm::fs::DrmIoctlGemCloseReply<SysdepsAllocator> resp(getSysdepsAllocator());
+			resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+			if (resp.error() != managarm::fs::Errors::SUCCESS)
+				return EINVAL;
+
 			*result = 0;
+			return 0;
+		}
+		case DRM_IOCTL_MODE_CLOSEFB: {
+			auto param = reinterpret_cast<drm_mode_closefb *>(arg);
+
+			managarm::fs::GenericIoctlRequest<SysdepsAllocator> req(getSysdepsAllocator());
+			req.set_command(request);
+
+			req.set_drm_fb_id(param->fb_id);
+
+			auto [offer, send_ioctl_req, send_req, recv_resp] = exchangeMsgsSync(
+			    handle,
+			    helix_ng::offer(
+			        helix_ng::sendBragiHeadOnly(ioctl_req, getSysdepsAllocator()),
+			        helix_ng::sendBragiHeadOnly(req, getSysdepsAllocator()),
+			        helix_ng::recvInline()
+			    )
+			);
+			HEL_CHECK(offer.error());
+			HEL_CHECK(send_ioctl_req.error());
+			HEL_CHECK(send_req.error());
+			HEL_CHECK(recv_resp.error());
+
+			managarm::fs::GenericIoctlReply<SysdepsAllocator> resp(getSysdepsAllocator());
+			resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+			if (resp.error() != managarm::fs::Errors::SUCCESS)
+				return EINVAL;
+
+			*result = resp.result();
 			return 0;
 		}
 		case DRM_IOCTL_WAIT_VBLANK: {
