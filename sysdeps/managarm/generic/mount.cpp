@@ -43,4 +43,35 @@ int Sysdeps<Mount>::operator()(const char *source, const char *target, const cha
 	return 0;
 }
 
+int Sysdeps<Umount2>::operator()(const char *target, int flags) {
+	SignalGuard sguard;
+
+	// managarm always performs a lazy (MNT_DETACH-style) detach; MNT_FORCE has no
+	// networked/FUSE filesystem to abort and there is no busy check, so the flags
+	// do not change behaviour.
+	(void)flags;
+
+	managarm::posix::UnmountRequest<SysdepsAllocator> req(getSysdepsAllocator());
+	req.set_target_path(frg::string<SysdepsAllocator>(getSysdepsAllocator(), target ? target : ""));
+
+	auto [offer, send_head, send_tail, recv_resp] = exchangeMsgsSync(
+	    getPosixLane(),
+	    helix_ng::offer(
+	        helix_ng::sendBragiHeadTail(req, getSysdepsAllocator()), helix_ng::recvInline()
+	    )
+	);
+
+	HEL_CHECK(offer.error());
+	HEL_CHECK(send_head.error());
+	HEL_CHECK(send_tail.error());
+	HEL_CHECK(recv_resp.error());
+
+	auto resp =
+	    *bragi::parse_head_only<managarm::posix::UnmountResponse>(recv_resp, getSysdepsAllocator());
+	if (resp.error() != managarm::posix::Errors::SUCCESS)
+		return resp.error() | toErrno;
+
+	return 0;
+}
+
 } // namespace mlibc
