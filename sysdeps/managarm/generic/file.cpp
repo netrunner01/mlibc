@@ -422,27 +422,27 @@ int Sysdeps<Fcntl>::operator()(int fd, int request, va_list args, int *result) {
 		*result = 0;
 		return 0;
 	} else if (request == F_SETLK) {
-		mlibc::infoLogger() << "\e[31mmlibc: F_SETLK\e[39m" << frg::endlog;
-		return 0;
+		mlibc::infoLogger() << "\e[31mmlibc: F_SETLK is unimplemented (ENOSYS)\e[39m" << frg::endlog;
+		return ENOSYS;
 	} else if (request == F_SETLKW) {
-		mlibc::infoLogger() << "\e[31mmlibc: F_SETLKW\e[39m" << frg::endlog;
-		return 0;
+		mlibc::infoLogger() << "\e[31mmlibc: F_SETLKW is unimplemented (ENOSYS)\e[39m" << frg::endlog;
+		return ENOSYS;
 	} else if (request == F_GETLK) {
 		struct flock *lock = va_arg(args, struct flock *);
 		lock->l_type = F_UNLCK;
-		mlibc::infoLogger() << "\e[31mmlibc: F_GETLK is stubbed!\e[39m" << frg::endlog;
-		return 0;
+		mlibc::infoLogger() << "\e[31mmlibc: F_GETLK is unimplemented (ENOSYS)\e[39m" << frg::endlog;
+		return ENOSYS;
 	} else if (request == F_OFD_SETLK) {
-		mlibc::infoLogger() << "\e[31mmlibc: F_OFD_SETLK\e[39m" << frg::endlog;
-		return 0;
+		mlibc::infoLogger() << "\e[31mmlibc: F_OFD_SETLK is unimplemented (ENOSYS)\e[39m" << frg::endlog;
+		return ENOSYS;
 	} else if (request == F_OFD_SETLKW) {
-		mlibc::infoLogger() << "\e[31mmlibc: F_OFD_SETLKW\e[39m" << frg::endlog;
-		return 0;
+		mlibc::infoLogger() << "\e[31mmlibc: F_OFD_SETLKW is unimplemented (ENOSYS)\e[39m" << frg::endlog;
+		return ENOSYS;
 	} else if (request == F_OFD_GETLK) {
 		struct flock *lock = va_arg(args, struct flock *);
 		lock->l_type = F_UNLCK;
-		mlibc::infoLogger() << "\e[31mmlibc: F_OFD_GETLK is stubbed!\e[39m" << frg::endlog;
-		return 0;
+		mlibc::infoLogger() << "\e[31mmlibc: F_OFD_GETLK is unimplemented (ENOSYS)\e[39m" << frg::endlog;
+		return ENOSYS;
 	} else if (request == F_ADD_SEALS) {
 		auto seals = va_arg(args, int);
 		auto handle = getHandleForFd(fd);
@@ -3076,8 +3076,10 @@ int Sysdeps<Prctl>::operator()(int option, va_list va, int *out) {
 
 	switch (option) {
 		case PR_CAPBSET_READ:
-			// TODO: Implement PR_CAPBSET read if we ever support capabilities
-			*out = 1;
+			// We do not implement capabilities; report the capability as NOT present (0)
+			// rather than claiming all of them (1), which made privilege-drop code take
+			// the "I am root" path. See DEF-15.
+			*out = 0;
 			return 0;
 		case PR_SET_NAME: {
 			const auto name = va_arg(va, char *);
