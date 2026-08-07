@@ -541,13 +541,11 @@ int Sysdeps<SetRegid>::operator()(gid_t rgid, gid_t egid) {
 }
 
 int Sysdeps<GetResuid>::operator()(uid_t *ruid, uid_t *euid, uid_t *suid) {
-	int real = sysdep<GetUid>();
-	if (real)
-		*ruid = real;
-
-	int effective = sysdep<GetEuid>();
-	if (effective)
-		*euid = effective;
+	// Always write the outputs: a real/effective/saved id of 0 (root) is a valid value, not
+	// "unset". Guarding on truthiness left the outputs uninitialised for root, which made
+	// getresuid() return garbage and broke GTK's setuid check.
+	*ruid = sysdep<GetUid>();
+	*euid = sysdep<GetEuid>();
 
 	SignalGuard sguard;
 
@@ -567,21 +565,15 @@ int Sysdeps<GetResuid>::operator()(uid_t *ruid, uid_t *euid, uid_t *suid) {
 	managarm::posix::GetSuidResponse<SysdepsAllocator> resp(getSysdepsAllocator());
 	resp.ParseFromArray(recv_resp.data(), recv_resp.length());
 	__ensure(resp.error() == managarm::posix::Errors::SUCCESS);
-	int saved = resp.uid();
-	if(saved)
-		*suid = saved;
+	*suid = resp.uid();
 
 	return 0;
 }
 
 int Sysdeps<GetResgid>::operator()(gid_t *rgid, gid_t *egid, gid_t *sgid) {
-	int real = sysdep<GetGid>();
-	if (real)
-		*rgid = real;
-
-	int effective = sysdep<GetEgid>();
-	if (effective)
-		*egid = effective;
+	// See GetResuid: always write the outputs (0/root is a valid id, not "unset").
+	*rgid = sysdep<GetGid>();
+	*egid = sysdep<GetEgid>();
 
 	SignalGuard sguard;
 
@@ -601,9 +593,7 @@ int Sysdeps<GetResgid>::operator()(gid_t *rgid, gid_t *egid, gid_t *sgid) {
 	managarm::posix::GetSgidResponse<SysdepsAllocator> resp(getSysdepsAllocator());
 	resp.ParseFromArray(recv_resp.data(), recv_resp.length());
 	__ensure(resp.error() == managarm::posix::Errors::SUCCESS);
-	int saved = resp.gid();
-	if(saved)
-		*sgid = saved;
+	*sgid = resp.gid();
 
 	return 0;
 }
