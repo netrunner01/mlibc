@@ -1639,10 +1639,12 @@ int Sysdeps<Reboot>::operator()(int command) {
 	// Ctrl-Alt-Del has no kernel counterpart on managarm. systemd toggles it around shutdown
 	// (RB_DISABLE_CAD at boot, RB_ENABLE_CAD just before the final poweroff) and must see these
 	// succeed -- on the EINVAL managarm used to return, systemd never issues the RB_POWER_OFF
-	// that actually powers the machine off (DEF-77). Treat both as a no-op, as Linux does.
-	if (command == RB_ENABLE_CAD || command == RB_DISABLE_CAD)
+	// that actually powers the machine off (DEF-77). RB_DISABLE_CAD is a boot-time no-op.
+	// RB_ENABLE_CAD is FORWARDED to posix, which treats it as the "final shutdown phase reached"
+	// signal and arms a poweroff watchdog (the DEF-79 shutdown-completion workaround).
+	if (command == RB_DISABLE_CAD)
 		return 0;
-	if (command != RB_POWER_OFF && command != RB_AUTOBOOT) {
+	if (command != RB_POWER_OFF && command != RB_AUTOBOOT && command != RB_ENABLE_CAD) {
 		mlibc::infoLogger(
 		) << "mlibc: Anything other than power off or reboot is not supported yet!"
 		  << frg::endlog;
