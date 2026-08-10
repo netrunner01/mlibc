@@ -994,6 +994,48 @@ int ioctl_drm(int fd, unsigned long request, void *arg, int *result, HelHandle h
 			*result = resp.result();
 			return 0;
 		}
+		case DRM_IOCTL_WAIT_VBLANK: {
+			auto param = reinterpret_cast<drm_wait_vblank *>(arg);
+
+			managarm::fs::GenericIoctlRequest<SysdepsAllocator> req(getSysdepsAllocator());
+			req.set_command(request);
+
+			req.set_drm_vblank_type(param->request.type);
+			req.set_drm_vblank_sequence(param->request.sequence);
+
+			auto [offer, send_ioctl_req, send_req, recv_resp] = exchangeMsgsSync(
+			    handle,
+			    helix_ng::offer(
+			        helix_ng::sendBragiHeadOnly(ioctl_req, getSysdepsAllocator()),
+			        helix_ng::sendBragiHeadOnly(req, getSysdepsAllocator()),
+			        helix_ng::recvInline()
+			    )
+			);
+			HEL_CHECK(offer.error());
+			HEL_CHECK(send_ioctl_req.error());
+			HEL_CHECK(send_req.error());
+			HEL_CHECK(recv_resp.error());
+
+			managarm::fs::GenericIoctlReply<SysdepsAllocator> resp(getSysdepsAllocator());
+			resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+
+			// Only the non-blocking instant query is supported; anything else comes
+			// back as ILLEGAL_ARGUMENT so the caller can take its own fallback.
+			if (resp.error() == managarm::fs::Errors::ILLEGAL_ARGUMENT) {
+				return EINVAL;
+			}
+			__ensure(resp.error() == managarm::fs::Errors::SUCCESS);
+
+			// The reply overlays the request in the union, so only write it out
+			// once the request fields are no longer needed.
+			param->reply.type = _DRM_VBLANK_RELATIVE;
+			param->reply.sequence = resp.drm_vblank_sequence();
+			param->reply.tval_sec = resp.drm_vblank_sec();
+			param->reply.tval_usec = resp.drm_vblank_usec();
+
+			*result = resp.result();
+			return 0;
+		}
 		case DRM_IOCTL_MODE_DIRTYFB: {
 			auto param = reinterpret_cast<drm_mode_fb_dirty_cmd *>(arg);
 
@@ -1335,12 +1377,6 @@ int ioctl_drm(int fd, unsigned long request, void *arg, int *result, HelHandle h
 
 			*result = resp.result();
 			return 0;
-		}
-		case DRM_IOCTL_WAIT_VBLANK: {
-			mlibc::infoLogger() << "\e[35mmlibc: DRM_IOCTL_WAIT_VBLANK"
-			                       " is a noop\e[39m"
-			                    << frg::endlog;
-			return EOPNOTSUPP;
 		}
 		case DRM_IOCTL_PRIME_HANDLE_TO_FD: {
 			auto param = reinterpret_cast<drm_prime_handle *>(arg);
