@@ -640,6 +640,14 @@ int ioctl_drm(int fd, unsigned long request, void *arg, int *result, HelHandle h
 
 			managarm::fs::GenericIoctlReply<SysdepsAllocator> resp(getSysdepsAllocator());
 			resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+
+			// Running out of VRAM is a real, reachable condition, and every DRM client
+			// already handles ENOMEM from CREATE_DUMB. __ensure() here would abort the
+			// client instead -- moving the crash rather than removing it.
+			if (resp.error() == managarm::fs::Errors::NO_SPACE_LEFT) {
+				*result = 0;
+				return ENOMEM;
+			}
 			__ensure(resp.error() == managarm::fs::Errors::SUCCESS);
 
 			param->handle = resp.drm_handle();
