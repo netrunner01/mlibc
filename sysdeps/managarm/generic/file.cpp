@@ -645,8 +645,31 @@ int Sysdeps<Ttyname>::operator()(int fd, char *buf, size_t size) {
 	return 0;
 }
 
-int Sysdeps<Fdatasync>::operator()(int) {
-	mlibc::infoLogger() << "\e[35mmlibc: fdatasync() is a no-op\e[39m" << frg::endlog;
+int Sysdeps<Fdatasync>::operator()(int fd) {
+	SignalGuard sguard;
+
+	auto handle = getHandleForFd(fd);
+	if (!handle)
+		return EBADF;
+
+	managarm::fs::FsyncRequest<SysdepsAllocator> req(getSysdepsAllocator());
+	req.set_data_only(1);
+
+	auto [offer, send_req, recv_resp] = exchangeMsgsSync(
+	    handle,
+	    helix_ng::offer(
+	        helix_ng::sendBragiHeadOnly(req, getSysdepsAllocator()), helix_ng::recvInline()
+	    )
+	);
+	HEL_CHECK(offer.error());
+	HEL_CHECK(send_req.error());
+	HEL_CHECK(recv_resp.error());
+
+	managarm::fs::SvrResponse<SysdepsAllocator> resp(getSysdepsAllocator());
+	resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+	if (resp.error() != managarm::fs::Errors::SUCCESS)
+		return resp.error() | toErrno;
+
 	return 0;
 }
 
@@ -2817,10 +2840,30 @@ int Sysdeps<GetHostname>::operator()(char *buffer, size_t bufsize) {
 }
 
 int Sysdeps<Fsync>::operator()(int fd) {
+	SignalGuard sguard;
+
 	auto handle = getHandleForFd(fd);
 	if (!handle)
 		return EBADF;
-	mlibc::infoLogger() << "mlibc: fsync is a stub" << frg::endlog;
+
+	managarm::fs::FsyncRequest<SysdepsAllocator> req(getSysdepsAllocator());
+	req.set_data_only(0);
+
+	auto [offer, send_req, recv_resp] = exchangeMsgsSync(
+	    handle,
+	    helix_ng::offer(
+	        helix_ng::sendBragiHeadOnly(req, getSysdepsAllocator()), helix_ng::recvInline()
+	    )
+	);
+	HEL_CHECK(offer.error());
+	HEL_CHECK(send_req.error());
+	HEL_CHECK(recv_resp.error());
+
+	managarm::fs::SvrResponse<SysdepsAllocator> resp(getSysdepsAllocator());
+	resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+	if (resp.error() != managarm::fs::Errors::SUCCESS)
+		return resp.error() | toErrno;
+
 	return 0;
 }
 
