@@ -3286,6 +3286,12 @@ int Sysdeps<NameToHandleAt>::operator()(int, const char *, struct file_handle *,
 int Sysdeps<SetGroups>::operator()(size_t size, const gid_t *list) {
 	SignalGuard sguard;
 
+	// A real setgroups() passes at most NGROUPS_MAX groups. Reject a larger
+	// count here (Linux returns EINVAL) rather than asking posix-subsystem to
+	// allocate an unbounded buffer for it.
+	if(size > 65536)
+		return EINVAL;
+
 	managarm::posix::SetGroupsRequest<SysdepsAllocator> req(getSysdepsAllocator());
 	req.set_entries(size);
 
