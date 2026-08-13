@@ -2429,7 +2429,10 @@ int Sysdeps<Statx>::operator()(int dirfd, const char *pathname, int flags, unsig
 				__ensure(!resp.file_type());
 		}
 
-		statxbuf->stx_mask = mask; // TODO: Properly?
+		// Report only the fields we actually fill, intersected with the request: the basic
+		// stats plus stx_mnt_id (set below from a real mount id). In particular STATX_BTIME is
+		// never filled, so it must not be claimed valid.
+		statxbuf->stx_mask = (STATX_BASIC_STATS | STATX_MNT_ID) & mask;
 		statxbuf->stx_dev_major = major(resp.stat_dev());
 		statxbuf->stx_dev_minor = minor(resp.stat_dev());
 		statxbuf->stx_ino = resp.fs_inode();
